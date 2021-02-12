@@ -1,0 +1,29 @@
+name: 'SecurityCodeScan'
+description: 'Security Code Scan action to add NuGet packages and set up projects'
+branding:
+  icon: 'check-circle'
+  color: 'purple'
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Security-Code-Scan
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop";
+
+        # $sdks = dotnet --list-sdks
+        # $sdk = $sdks | Sort-Object -Descending | Select-Object -First 1
+        # $sdkregex = [regex]::Match($sdk, "(\d\.\d\.\d\d\d) \[([^]]*)\]")
+
+        # $slndll = Join-Path $sdkregex.captures.groups[2].value $sdkregex.captures.groups[1].value "Microsoft.DotNet.Cli.Sln.Internal.dll"
+        # Add-Type -path $slndll
+
+        foreach($project in Get-ChildItem -Path . -Filter *.csproj -Recurse -Force) {
+          dotnet add $project package SecurityCodeScan.VS2019
+          # $slnobj = [Microsoft.DotNet.Cli.Sln.Internal.SlnFile]::Read($sln)
+          # filter by solution folder guid TypeGuid  != {2150E333-8FDC-42A3-9474-1A3956D46DE8}
+
+          # foreach ($project in $slnobj.Projects) {
+          #   Write-Output $project.FilePath
+          #   }
+        }
