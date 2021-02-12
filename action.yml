@@ -13,4 +13,26 @@ runs:
 
         foreach($project in Get-ChildItem -Path . -Filter *.csproj -Recurse -Force) {
           dotnet add $project package SecurityCodeScan.VS2019
+          
+          $xml = [xml](Get-Content -Path $project)
+
+          $errorLog = $xml.CreateElement("ErrorLog")
+          $errorLog.set_InnerText("analysis.sarif")
+          $propertyGroups = $xml.SelectNodes("//Project/PropertyGroup")
+          $propertyGroups[0].AppendChild($errorLog)
+
+          $xml.Save($project)
+        }
+
+        foreach($project in Get-ChildItem -Path . -Filter *.vbproj -Recurse -Force) {
+          dotnet add $project package SecurityCodeScan.VS2019
+          
+          $xml = [xml](Get-Content -Path $project)
+
+          $errorLog = $xml.CreateElement("ErrorLog")
+          $errorLog.set_InnerText("analysis.sarif")
+          $propertyGroups = $xml.SelectNodes("//Project/PropertyGroup")
+          $propertyGroups[0].AppendChild($errorLog)
+
+          $xml.Save($project)
         }
