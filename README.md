@@ -1,4 +1,4 @@
-# Security-Code-Scan Action
+# Security-Code-Scan Add Action
 
 This action is designed to run as part of a workflow that builds projects referencing NuGet [SecurityCodeScan.VS2019](https://www.nuget.org/packages/SecurityCodeScan.VS2019/).
 
