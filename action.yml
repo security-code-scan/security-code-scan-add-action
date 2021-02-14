@@ -16,7 +16,6 @@ runs:
           $xml = [xml](Get-Content -Path $project)
           if (-not $xml.Project.xmlns) {
             dotnet add $project package SecurityCodeScan.VS2019
-            $xml = [xml](Get-Content -Path $project)
           }
           else {
             $packageId = "SecurityCodeScan.VS2019"
@@ -89,6 +88,7 @@ runs:
             Invoke-Expression "[Program$id]::Main()"
           }
 
+          $xml = [xml](Get-Content -Path $project)
           if ($xml.Project.xmlns) {
             $nsmgr = New-Object System.Xml.XmlNamespaceManager $xml.NameTable
             $nsmgr.AddNamespace('x','http://schemas.microsoft.com/developer/msbuild/2003')
