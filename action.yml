@@ -19,7 +19,10 @@ runs:
           }
           else {
             $packageId = "SecurityCodeScan.VS2019"
-            $packageVersion = "5.0.0"
+            $scs2019packages = Invoke-RestMethod -Uri "https://api-v2v3search-0.nuget.org/query?q=packageid:SecurityCodeScan.VS2019&top=true"
+            $packageVersion = $scs2019packages.data.versions | Sort-Object  -Property version -Descending | Select-Object -First 1
+            $packageVersion = $packageVersion.version
+
             $packages = $project | Split-Path -parent
             $packages = Join-Path $packages "packages.config"
 
