@@ -96,12 +96,12 @@ runs:
           }
           $propertyGroups = $xml.SelectNodes("//${x}Project/${x}PropertyGroup", $nsmgr)
 
-          $errorLog = $xml.CreateElement("ErrorLog")
+          $errorLog = $xml.CreateElement("ErrorLog", $xml.Project.NamespaceURI)
           $errorLog.set_InnerText("analysis.sarif")
           $propertyGroups[0].AppendChild($errorLog)
 
           if (-not $propertyGroups[0].AdditionalFileItemNames) {
-            $additionalFileItemNamesElt = $xml.CreateElement("AdditionalFileItemNames")
+            $additionalFileItemNamesElt = $xml.CreateElement("AdditionalFileItemNames", $xml.Project.NamespaceURI)
             $additionalFileItemNamesElt.set_InnerText('$(AdditionalFileItemNames);Content')
             $propertyGroups[0].AppendChild($additionalFileItemNamesElt)
           }
