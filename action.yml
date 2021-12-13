@@ -15,7 +15,7 @@ runs:
 
         # get the latest security code scan package version
         $scs2019packages = Invoke-RestMethod -Uri "https://api-v2v3search-0.nuget.org/query?q=packageid:SecurityCodeScan.VS2019&top=true"
-        $SecurityCodeScanPackageVersion = $scs2019packages.data.versions | Sort-Object  -Property version -Descending | Select-Object -First 1 | Select-Object -Property version
+        $SecurityCodeScanPackageVersion = ($scs2019packages.data.versions | Sort-Object  -Property version -Descending | Select-Object -First 1).version
 
         foreach ($projectFile in Get-ChildItem -Path . -Include *.csproj, *.vbproj -File -Recurse -Force) {
 
