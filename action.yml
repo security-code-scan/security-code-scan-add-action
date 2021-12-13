@@ -97,14 +97,22 @@ runs:
             $propertyGroup.AppendChild($restoreProjectStyle) | Out-Null
             $project.Project.AppendChild($propertyGroup) | Out-Null
 
-            # create Analyzer element
+            # create Analyzer elements
             $itemGroup = $project.CreateElement('ItemGroup', $project.Project.NamespaceURI)
+
             $analyzer = $project.CreateElement('Analyzer', $project.Project.NamespaceURI)
             $analyzerInclude = $project.CreateAttribute('Include')
             # since the changes to the project will be discarded it is ok to set a Full path to SecurityCodeScanPackagePath
             $analyzerInclude.Value = Join-Path -Path $SecurityCodeScanPackagePath -ChildPath "$($SecurityCodeScanPackageName).$($SecurityCodeScanPackageVersion)\analyzers\dotnet\SecurityCodeScan.VS2019.dll"
             $analyzer.Attributes.Append($analyzerInclude) | Out-Null
             $itemGroup.AppendChild($analyzer) | Out-Null
+
+            $analyzer = $project.CreateElement('Analyzer', $project.Project.NamespaceURI)
+            $analyzerInclude = $project.CreateAttribute('Include')
+            $analyzerInclude.Value = Join-Path -Path $SecurityCodeScanPackagePath -ChildPath "$($SecurityCodeScanPackageName).$($SecurityCodeScanPackageVersion)\analyzers\dotnet\YamlDotNet.dll"
+            $analyzer.Attributes.Append($analyzerInclude) | Out-Null
+            $itemGroup.AppendChild($analyzer) | Out-Null
+
             $project.Project.AppendChild($itemGroup) | Out-Null
 
             $project.Save($projectFile.FullName)
