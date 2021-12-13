@@ -10,104 +10,126 @@ runs:
       shell: pwsh
       run: |
         $ErrorActionPreference = "Stop";
+        [string]$SecurityCodeScanPackageName = 'SecurityCodeScan.VS2019'
+        [string]$SecurityCodeScanPackagePath = $null
 
-        foreach($project in Get-ChildItem -Path . -Filter *.??proj -Recurse -Force) {
+        # get the latest security code scan package version
+        $scs2019packages = Invoke-RestMethod -Uri "https://api-v2v3search-0.nuget.org/query?q=packageid:SecurityCodeScan.VS2019&top=true"
+        $SecurityCodeScanPackageVersion = $scs2019packages.data.versions | Sort-Object  -Property version -Descending | Select-Object -First 1 | Select-Object -Property version
 
-          $xml = [xml](Get-Content -Path $project)
-          if (-not $xml.Project.xmlns) {
-            dotnet add $project package SecurityCodeScan.VS2019
+        foreach ($projectFile in Get-ChildItem -Path . -Include *.csproj, *.vbproj -File -Recurse -Force) {
+
+          $project = [xml](Get-Content -LiteralPath $projectFile.FullName -Raw)
+          $propertyGroup = $project.CreateElement('PropertyGroup', $project.Project.NamespaceURI)
+
+          # redirect all warnings to analysis.sarif file
+          $errorLog = $project.CreateElement('ErrorLog', $project.Project.NamespaceURI)
+          $errorLog.InnerText = 'analysis.sarif'
+          $propertyGroup.AppendChild($errorLog) | Out-Null
+
+          # add AdditionalFileItemNames to enable scanning of web.config
+          # should we check if the AdditionalFileItemNames already exists?
+          $additionalFileItemNames = $project.CreateElement("AdditionalFileItemNames", $project.Project.NamespaceURI)
+          $additionalFileItemNames.InnerText = '$(AdditionalFileItemNames);Content'
+          $propertyGroup.AppendChild($additionalFileItemNames) | Out-Null
+
+          $project.Project.AppendChild($propertyGroup) | Out-Null
+          $project.Save($projectFile.FullName)
+
+          $packagesConfigFile = $projectFile.Directory.GetFileSystemInfos('packages.config')
+
+          # if the project is new .NET Core style or the old one, but uses PackageReference
+          if ($project.Project.Sdk -or ($project.Project.ItemGroup.PackageReference | Where-Object { $_ }) -or (-not $packagesConfigFile.Exists)) {
+            # delete existing SecurityCodeScan PackageReference entities
+            $project.Project.ItemGroup.PackageReference |
+            Where-Object Include -like 'SecurityCodeScan*' |
+            ForEach-Object { $_.SelectSingleNode('..').RemoveChild($_) | Out-Null }
+
+            $packageReference = $project.CreateElement('PackageReference')
+            $packageReferenceInclude = $project.CreateAttribute('Include')
+            $packageReferenceInclude.Value = $SecurityCodeScanPackageName
+            $packageReference.Attributes.Append($packageReferenceInclude) | Out-Null
+            $packageReferenceVersion = $project.CreateAttribute('Version')
+            $packageReferenceVersion.Value = $SecurityCodeScanPackageVersion
+            $packageReference.Attributes.Append($packageReferenceVersion) | Out-Null
+            $packageReferencePrivateAssets = $project.CreateAttribute('PrivateAssets')
+            $packageReferencePrivateAssets.Value = 'All'
+            $packageReference.Attributes.Append($packageReferencePrivateAssets) | Out-Null
+            $packageReferenceIncludeAssets = $project.CreateAttribute('IncludeAssets')
+            $packageReferenceIncludeAssets.Value = 'runtime; build; native; contentfiles; analyzers; buildtransitive'
+            $packageReference.Attributes.Append($packageReferenceIncludeAssets) | Out-Null
+            $itemGroup = $project.CreateElement('ItemGroup')
+            $itemGroup.AppendChild($packageReference) | Out-Null
+            $project.Project.AppendChild($itemGroup) | Out-Null
+
+            # create RestoreProjectStyle element
+            if (-not $project.Project.Sdk) {
+              $restoreProjectStyle = $project.CreateElement('RestoreProjectStyle')
+              $restoreProjectStyle.InnerText = 'PackageReference'
+              $propertyGroup = $project.CreateElement('PropertyGroup')
+              $propertyGroup.AppendChild($restoreProjectStyle) | Out-Null
+              $project.Project.AppendChild($propertyGroup) | Out-Null
+            }
+
+            $project.Save($projectFile.FullName)
           }
-          else {
-            $packageId = "SecurityCodeScan.VS2019"
-            $scs2019packages = Invoke-RestMethod -Uri "https://api-v2v3search-0.nuget.org/query?q=packageid:SecurityCodeScan.VS2019&top=true"
-            $packageVersion = $scs2019packages.data.versions | Sort-Object  -Property version -Descending | Select-Object -First 1
-            $packageVersion = $packageVersion.version
+          else { # Old style Full DotNet Framework project with packages.config
 
-            $packages = $project | Split-Path -parent
-            $packages = Join-Path $packages "packages.config"
+            # create or get the full path to the solution path directory
+            if (-not $SecurityCodeScanPackagePath) {
+              if (-not (Test-Path packages -PathType Container)) {
+                $SecurityCodeScanPackagePath = (New-Item -Name packages -ItemType Directory).FullName
+              }
+              else {
+                $SecurityCodeScanPackagePath = (Get-Item -Path packages).FullName
+              }
+            }
 
-            $id = get-random
-            $code = @"
-            using System;
-            using System.Runtime.Versioning;
-            using System.Text.RegularExpressions;
-            using System.Xml;
+            # delete existing SecurityCodeScan analyzer entities
+            $project.Project.ItemGroup.Analyzer |
+            Where-Object Include -like '*SecurityCodeScan*' |
+            ForEach-Object { $_.SelectSingleNode('..').RemoveChild($_) | Out-Null }
 
-        public class Program$id
-        {
-          public static void Main(){
-            var projXml = new XmlDocument();
-            projXml.Load(@"$project");
+            # create RestoreProjectStyle element
+            $restoreProjectStyle = $project.CreateElement('RestoreProjectStyle', $project.Project.NamespaceURI)
+            $restoreProjectStyle.InnerText = 'PackagesConfig'
+            $propertyGroup = $project.CreateElement('PropertyGroup', $project.Project.NamespaceURI)
+            $propertyGroup.AppendChild($restoreProjectStyle) | Out-Null
+            $project.Project.AppendChild($propertyGroup) | Out-Null
 
-            var xmlNamespace = "http://schemas.microsoft.com/developer/msbuild/2003";
-            var nsmgr = new XmlNamespaceManager(projXml.NameTable);
-            nsmgr.AddNamespace("x", xmlNamespace);
+            # create Analyzer element
+            $itemGroup = $project.CreateElement('ItemGroup', $project.Project.NamespaceURI)
+            $analyzer = $project.CreateElement('Analyzer', $project.Project.NamespaceURI)
+            $analyzerInclude = $project.CreateAttribute('Include')
+            # since the changes to the project will be discarded it is ok to set a Full path to SecurityCodeScanPackagePath
+            $analyzerInclude.Value = Join-Path -Path $SecurityCodeScanPackagePath -ChildPath "$($SecurityCodeScanPackageName).$($SecurityCodeScanPackageVersion)\analyzers\dotnet\SecurityCodeScan.VS2019.dll"
+            $analyzer.Attributes.Append($analyzerInclude) | Out-Null
+            $itemGroup.AppendChild($analyzer) | Out-Null
+            $project.Project.AppendChild($itemGroup) | Out-Null
 
-            XmlNode itemGroupNode = projXml.CreateNode(XmlNodeType.Element, "ItemGroup", xmlNamespace);
-            XmlNode analyzerNode = projXml.CreateNode(XmlNodeType.Element, "Analyzer", xmlNamespace);
-            XmlAttribute includeAttribute = projXml.CreateAttribute("Include");
-            includeAttribute.Value = $@"..\packages\$packageId.$packageVersion\analyzers\dotnet\SecurityCodeScan.VS2019.dll";
-            analyzerNode.Attributes.Append(includeAttribute);
-            itemGroupNode.AppendChild(analyzerNode);
-            projXml.SelectSingleNode("//x:Project", nsmgr).AppendChild(itemGroupNode);
-            projXml.Save(@"$project");
+            $project.Save($projectFile.FullName)
 
-            XmlNode targetFrameworkNode = projXml.SelectSingleNode("//x:TargetFrameworkVersion", nsmgr);
-            var targetFwAttribute = new TargetFrameworkAttribute($".NETFramework, Version={targetFrameworkNode.InnerXml}");
-            Regex p = new Regex(@"\d+(\.\d+)+");
-            Match m = p.Match(targetFwAttribute.FrameworkName);
-            Version targetFwVersion = Version.Parse(m.Value);
+            $packagesConfig = [xml](Get-Content -LiteralPath $packagesConfigFile.FullName -Raw)
 
-            var packagesXml = new XmlDocument();
-            packagesXml.Load(@"$packages");
+            # delete existing SecurityCodeScan package entities
+            $packagesConfig.packages.package |
+            Where-Object id -like '*SecurityCodeScan*' |
+            ForEach-Object { $_.SelectSingleNode('..').RemoveChild($_) | Out-Null }
 
-            var packagesNode = packagesXml.SelectSingleNode("//packages");
+            # create a SecurityCodeScan package entity
+            $package = $packagesConfig.CreateElement('package')
+            $packageId = $packagesConfig.CreateAttribute('id')
+            $packageId.Value = $SecurityCodeScanPackageName
+            $package.Attributes.Append($packageId) | Out-Null
+            $packageVersion = $packagesConfig.CreateAttribute('version')
+            $packageVersion.Value = $SecurityCodeScanPackageVersion
+            $package.Attributes.Append($packageVersion) | Out-Null
+            $packageDevelopmentDependency = $packagesConfig.CreateAttribute('developmentDependency')
+            $packageDevelopmentDependency.Value = 'true'
+            $package.Attributes.Append($packageDevelopmentDependency) | Out-Null
 
-            XmlNode packageNode = packagesXml.CreateElement("package");
+            $packagesConfig.packages.AppendChild($package) | Out-Null
 
-            XmlAttribute idAttribute = packagesXml.CreateAttribute("id");
-            idAttribute.Value = "$packageId";
-            packageNode.Attributes.Append(idAttribute);
-
-            XmlAttribute versionAttribute = packagesXml.CreateAttribute("version");
-            versionAttribute.Value = "$packageVersion";
-            packageNode.Attributes.Append(versionAttribute);
-
-            XmlAttribute targetFrameworkAttribute = packagesXml.CreateAttribute("targetFramework");
-            targetFrameworkAttribute.Value = $"net{targetFwVersion.ToString().Replace(".", "")}";
-            packageNode.Attributes.Append(targetFrameworkAttribute);
-
-            XmlAttribute developmentDependencyAttribute = packagesXml.CreateAttribute("developmentDependency");
-            developmentDependencyAttribute.Value = "true";
-            packageNode.Attributes.Append(developmentDependencyAttribute);
-
-            packagesNode.AppendChild(packageNode);
-            packagesXml.Save(@"$packages");
+            $packagesConfig.Save($packagesConfigFile.FullName)
           }
-        }
-        "@
-
-            Add-Type -TypeDefinition $code -Language CSharp
-            Invoke-Expression "[Program$id]::Main()"
-          }
-
-          $xml = [xml](Get-Content -Path $project)
-          if ($xml.Project.xmlns) {
-            $nsmgr = New-Object System.Xml.XmlNamespaceManager $xml.NameTable
-            $nsmgr.AddNamespace('x','http://schemas.microsoft.com/developer/msbuild/2003')
-            $x = 'x:'
-          }
-          $propertyGroups = $xml.SelectNodes("//${x}Project/${x}PropertyGroup", $nsmgr)
-
-          $errorLog = $xml.CreateElement("ErrorLog", $xml.Project.NamespaceURI)
-          $errorLog.set_InnerText("analysis.sarif")
-          $propertyGroups[0].AppendChild($errorLog)
-
-          if (-not $propertyGroups[0].AdditionalFileItemNames) {
-            $additionalFileItemNamesElt = $xml.CreateElement("AdditionalFileItemNames", $xml.Project.NamespaceURI)
-            $additionalFileItemNamesElt.set_InnerText('$(AdditionalFileItemNames);Content')
-            $propertyGroups[0].AppendChild($additionalFileItemNamesElt)
-          }
-
-          $xml.Save($project)
         }
