@@ -8,10 +8,6 @@ It produces a GitHub compatible SARIF file for uploading to the repository 'Code
 
 See [action.yml](action.yml)
 
-### Input Parameters
-
-**sarif_directory**: _(optional)_ The output directory where SARIF files should be collected.
-
 ### Workflow Examples
 
 The recommended way to add this action to your workflow is with a subsequent action that uploads the prepared SARIF files to the repository 'Code scanning alerts'.
