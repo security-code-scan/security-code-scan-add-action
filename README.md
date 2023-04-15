@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v2
       
       - name: Set up projects
-        uses: security-code-scan/security-code-scan-add-action@v1.2
+        uses: security-code-scan/security-code-scan-add-action@v1
 
       - name: Build
         run: |
@@ -31,7 +31,7 @@ jobs:
           dotnet build
         
       - name: Convert sarif for uploading to GitHub
-        uses: security-code-scan/security-code-scan-results-action@v1.3
+        uses: security-code-scan/security-code-scan-results-action@v1
         
       - name: Upload sarif	
         uses: github/codeql-action/upload-sarif@v1
